@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多智能体学术写作优化系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/styles.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-robot"></i> 多智能体学术优化
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-tab="text-optimization">
+                            <i class="bi bi-pencil-square"></i> 文本优化
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-tab="data-synthesis">
+                            <i class="bi bi-database"></i> 数据合成
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-tab="evaluation">
+                            <i class="bi bi-graph-up"></i> 评估分析
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-tab="distillation">
+                            <i class="bi bi-funnel"></i> 数据蒸馏
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#configModal">
+                            <i class="bi bi-gear"></i> 配置
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容区域 -->
+    <div class="container-fluid mt-4">
+        <!-- 文本优化模块 -->
+        <div id="text-optimization" class="tab-content active">
+            <div class="row">
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-pencil-square"></i> 学术文本优化</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- 输入模式选择 -->
+                            <div class="mb-3">
+                                <div class="btn-group" role="group">
+                                    <input type="radio" class="btn-check" name="inputMode" id="textInput" checked>
+                                    <label class="btn btn-outline-primary" for="textInput">
+                                        <i class="bi bi-type"></i> 文本输入
+                                    </label>
+                                    
+                                    <input type="radio" class="btn-check" name="inputMode" id="fileInput">
+                                    <label class="btn btn-outline-primary" for="fileInput">
+                                        <i class="bi bi-file-text"></i> 文件上传
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- 文本输入区域 -->
+                            <div id="textInputArea">
+                                <div class="mb-3">
+                                    <label for="originalText" class="form-label">待优化的学术文本：</label>
+                                    <textarea class="form-control" id="originalText" rows="8" 
+                                              placeholder="请输入您需要优化的学术文本...&#10;例如：这是一段关于多智能体协作进行学术写作优化的初稿。"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- 文件上传区域 -->
+                            <div id="fileInputArea" style="display: none;">
+                                <div class="mb-3">
+                                    <label for="fileUpload" class="form-label">上传文本文件：</label>
+                                    <input type="file" class="form-control" id="fileUpload" accept=".txt,.md,.doc,.docx">
+                                    <div class="form-text">支持格式：.txt, .md, .doc, .docx</div>
+                                </div>
+                                <div class="mb-3" id="filePreview" style="display: none;">
+                                    <label class="form-label">文件预览：</label>
+                                    <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                        <pre id="fileContent"></pre>
+                                    </div>
+                                </div>
+                                <!-- 长文本分段设置 -->
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label for="chunkSize" class="form-label">分段大小：</label>
+                                        <input type="number" class="form-control" id="chunkSize" value="5000" min="1000" max="20000">
+                                        <div class="form-text">字符数</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="chunkOverlap" class="form-label">重叠字符：</label>
+                                        <input type="number" class="form-control" id="chunkOverlap" value="200" min="0" max="1000">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="maxChunks" class="form-label">最大段数：</label>
+                                        <input type="number" class="form-control" id="maxChunks" value="0" min="0">
+                                        <div class="form-text">0=不限制</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 优化需求设置 -->
+                            <div class="mb-3">
+                                <label for="requirements" class="form-label">优化需求：</label>
+                                <input type="text" class="form-control" id="requirements" 
+                                       value="学术表达提升,逻辑结构优化" 
+                                       placeholder="用逗号分隔多个需求...">
+                                <div class="form-text">例如：学术表达提升,逻辑结构优化,可读性增强</div>
+                            </div>
+
+                            <!-- 高级设置 -->
+                            <div class="accordion mb-3" id="advancedSettings">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAdvanced">
+                                            <i class="bi bi-gear"></i> 高级设置
+                                        </button>
+                                    </h2>
+                                    <div id="collapseAdvanced" class="accordion-collapse collapse">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <label for="rounds" class="form-label">协作轮次：</label>
+                                                    <input type="number" class="form-control" id="rounds" value="3" min="1" max="10">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="language" class="form-label">语言：</label>
+                                                    <select class="form-control" id="language">
+                                                        <option value="zh">中文</option>
+                                                        <option value="en">English</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mt-4">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="enableTools" checked>
+                                                            <label class="form-check-label" for="enableTools">启用工具调用</label>
+                                                        </div>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="enableMemory" checked>
+                                                            <label class="form-check-label" for="enableMemory">启用记忆功能</label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 操作按钮 -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button class="btn btn-success me-md-2" id="startOptimization">
+                                    <i class="bi bi-play-fill"></i> 开始优化
+                                </button>
+                                <button class="btn btn-secondary" id="clearForm">
+                                    <i class="bi bi-arrow-clockwise"></i> 清空重置
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 进度和状态显示 -->
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-activity"></i> 优化进度</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="progressContainer" style="display: none;">
+                                <div class="mb-3">
+                                    <label class="form-label">当前状态：</label>
+                                    <div id="currentStatus" class="badge bg-secondary">等待开始</div>
+                                </div>
+                                <div class="progress mb-3">
+                                    <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <div id="liveLog" class="border rounded p-2" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                                </div>
+                            </div>
+                            <div id="idleMessage" class="text-muted text-center">
+                                <i class="bi bi-clock"></i><br>
+                                点击"开始优化"按钮开始处理
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 结果展示区域 -->
+            <div class="row mt-4" id="resultsArea" style="display: none;">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="bi bi-check-circle"></i> 优化结果</h5>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-outline-primary btn-sm" id="downloadText">
+                                    <i class="bi bi-download"></i> 下载文本
+                                </button>
+                                <button class="btn btn-outline-info btn-sm" id="downloadHTML">
+                                    <i class="bi bi-filetype-html"></i> 下载报告
+                                </button>
+                                <button class="btn btn-outline-success btn-sm" id="downloadJSON">
+                                    <i class="bi bi-filetype-json"></i> 下载数据
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- 对比视图切换 -->
+                            <div class="mb-3">
+                                <div class="btn-group" role="group">
+                                    <input type="radio" class="btn-check" name="viewMode" id="sideBySide" checked>
+                                    <label class="btn btn-outline-primary" for="sideBySide">对比视图</label>
+                                    
+                                    <input type="radio" class="btn-check" name="viewMode" id="finalOnly">
+                                    <label class="btn btn-outline-primary" for="finalOnly">最终结果</label>
+                                    
+                                    <input type="radio" class="btn-check" name="viewMode" id="roundByRound">
+                                    <label class="btn btn-outline-primary" for="roundByRound">轮次详情</label>
+                                </div>
+                            </div>
+
+                            <!-- 对比视图 -->
+                            <div id="comparisonView">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>原始文本：</h6>
+                                        <div class="border rounded p-3" style="height: 400px; overflow-y: auto;">
+                                            <pre id="originalTextDisplay"></pre>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>优化结果：</h6>
+                                        <div class="border rounded p-3" style="height: 400px; overflow-y: auto;">
+                                            <pre id="optimizedTextDisplay"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 最终结果视图 -->
+                            <div id="finalResultView" style="display: none;">
+                                <div class="border rounded p-3" style="max-height: 500px; overflow-y: auto;">
+                                    <pre id="finalTextDisplay"></pre>
+                                </div>
+                            </div>
+
+                            <!-- 轮次详情视图 -->
+                            <div id="roundDetailsView" style="display: none;">
+                                <div id="roundsContainer"></div>
+                            </div>
+
+                            <!-- 评分展示 -->
+                            <div class="mt-4" id="scoresDisplay">
+                                <h6>最终评分：</h6>
+                                <div class="row" id="scoresContainer">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据合成模块 -->
+        <div id="data-synthesis" class="tab-content" style="display: none;">
+            <div class="row">
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-database"></i> 数据合成</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="seedTexts" class="form-label">种子文本（每行一个）：</label>
+                                <textarea class="form-control" id="seedTexts" rows="8" 
+                                          placeholder="请输入种子文本，每行一个...&#10;例如：&#10;本研究探讨了基于多智能体的文本优化框架，初步实验尚不充分。&#10;我们提出一个简单的管线，但方法部分缺乏清晰的因果论证。"></textarea>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="synthRequirements" class="form-label">合成需求：</label>
+                                <input type="text" class="form-control" id="synthRequirements" 
+                                       value="学术表达提升,结构清晰,可读性增强" 
+                                       placeholder="用逗号分隔...">
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="synthRounds" class="form-label">协作轮次：</label>
+                                    <input type="number" class="form-control" id="synthRounds" value="3" min="1" max="10">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="outputPath" class="form-label">输出文件名：</label>
+                                    <input type="text" class="form-control" id="outputPath" 
+                                           placeholder="留空自动生成时间戳文件名">
+                                </div>
+                            </div>
+
+                            <div class="d-grid">
+                                <button class="btn btn-primary" id="startSynthesis">
+                                    <i class="bi bi-gear-fill"></i> 开始合成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-list"></i> 合成进度</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="synthesisProgress">
+                                <div class="text-muted text-center">
+                                    <i class="bi bi-hourglass"></i><br>
+                                    等待开始合成...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 评估分析模块 -->
+        <div id="evaluation" class="tab-content" style="display: none;">
+            <div class="row">
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-graph-up"></i> 评估分析</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="evalCases" class="form-label">评估测试用例：</label>
+                                <textarea class="form-control" id="evalCases" rows="8" 
+                                          placeholder="请输入测试用例，格式：文本|||需求1,需求2&#10;例如：&#10;本文提出一种方法，但存在一些问题，需要更严谨的叙述。|||严谨性,逻辑连贯&#10;我们的实验结果较为有限，缺少消融实验。|||补充实验建议,学术化表达"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="evalRounds" class="form-label">评估轮次：</label>
+                                <input type="number" class="form-control" id="evalRounds" value="2" min="1" max="10">
+                            </div>
+
+                            <div class="d-grid">
+                                <button class="btn btn-warning" id="startEvaluation">
+                                    <i class="bi bi-bar-chart-fill"></i> 开始评估
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-speedometer2"></i> 评估指标</h5>
+                        </div>
+                        <div class="card-body" id="evaluationResults">
+                            <div class="text-muted text-center">
+                                <i class="bi bi-clipboard-data"></i><br>
+                                运行评估后显示指标结果
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据蒸馏模块 -->
+        <div id="distillation" class="tab-content" style="display: none;">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-funnel"></i> 数据蒸馏</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="distillSource" class="form-label">源JSONL文件：</label>
+                                        <input type="file" class="form-control" id="distillSource" accept=".jsonl">
+                                        <div class="form-text">选择之前合成的JSONL数据文件</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="distillOutput" class="form-label">输出文件名：</label>
+                                        <input type="text" class="form-control" id="distillOutput" 
+                                               value="distill_pairs.jsonl" 
+                                               placeholder="蒸馏数据输出文件名">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-grid">
+                                <button class="btn btn-info" id="startDistillation">
+                                    <i class="bi bi-funnel-fill"></i> 开始蒸馏
+                                </button>
+                            </div>
+
+                            <div class="mt-4" id="distillationResults" style="display: none;">
+                                <h6>蒸馏结果：</h6>
+                                <div class="alert alert-success">
+                                    <p id="distillationMessage"></p>
+                                    <button class="btn btn-success btn-sm" id="downloadDistilled">
+                                        <i class="bi bi-download"></i> 下载蒸馏数据
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 配置模态框 -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-gear"></i> 系统配置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="openaiApiKey" class="form-label">OpenAI API Key：</label>
+                        <input type="password" class="form-control" id="openaiApiKey" placeholder="sk-...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="openaiBaseUrl" class="form-label">OpenAI Base URL：</label>
+                        <input type="text" class="form-control" id="openaiBaseUrl" 
+                               value="https://api.chatanywhere.tech/v1" 
+                               placeholder="https://api.openai.com/v1">
+                    </div>
+                    <div class="mb-3">
+                        <label for="llmModel" class="form-label">LLM Model：</label>
+                        <input type="text" class="form-control" id="llmModel" 
+                               value="gpt-4o-mini" 
+                               placeholder="gpt-4o-mini">
+                    </div>
+                    <div class="mb-3">
+                        <label for="serpApiKey" class="form-label">SerpAPI Key (可选)：</label>
+                        <input type="password" class="form-control" id="serpApiKey" placeholder="用于网络搜索功能">
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 
+                        配置将保存在浏览器本地存储中，页面刷新后会自动加载。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="saveConfig">保存配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载中指示器 -->
+    <div id="loadingOverlay" style="display: none;">
+        <div class="d-flex justify-content-center align-items-center h-100">
+            <div class="text-center">
+                <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+                <p class="mt-2">处理中，请稍候...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.7.3/socket.io.min.js"></script>
+    <!-- 自定义JS -->
+    <script src="static/js/app.js"></script>
+</body>
+</html>

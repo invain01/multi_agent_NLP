@@ -24,6 +24,13 @@ except Exception:
     PeftModel = None  # type: ignore
     _PEFT_AVAILABLE = False
 
+# 尝试导入 bitsandbytes 以支持 4bit 量化推理
+try:
+    import bitsandbytes as bnb  # type: ignore  # noqa: F401
+    _BNB_AVAILABLE = True
+except Exception:
+    _BNB_AVAILABLE = False
+
 _FORCE_STUB = os.getenv("FORCE_STUDENT_STUB") == "1"
 _NEED_STUB = _FORCE_STUB or (not _TORCH_AVAILABLE) or (not _TRANSFORMERS_AVAILABLE)
 
@@ -53,7 +60,7 @@ else:
     class HFChatLLM:
         """HF + 可选 LoRA 聊天式学生模型封装 (.invoke)
         支持本地 Qwen/Qwen1.5-1.8B-Chat 及 LoRA 适配器加载。
-        依赖: torch + transformers (+ peft 可选)
+        依赖: torch + transformers (+ peft 可选, + bitsandbytes 可选用于 4bit 推理)
         """
 
         def __init__(
@@ -64,33 +71,56 @@ else:
             device: Optional[str] = None,
             torch_dtype: Optional[str] = None,
             device_map: Optional[str] = None,
+            load_in_4bit: bool = False,
         ) -> None:
             self.base_model = base_model
             self.lora_dir = lora_dir or ""
-            self.max_new_tokens = max_new_tokens
+            # 为了控制显存占用，限制单次生成长度
+            self.max_new_tokens = min(max_new_tokens, 64)
             self.model_name = base_model
 
+            # 是否启用 4bit 量化（仅在 GPU + bitsandbytes 可用时生效）
+            self.load_in_4bit = bool(load_in_4bit and _BNB_AVAILABLE and torch and torch.cuda.is_available())
+            if load_in_4bit and not self.load_in_4bit:
+                print("⚠️ Requested load_in_4bit=True but bitsandbytes / CUDA 不可用，回退到半精度模式。")
+
             if device is None:
+                # 默认优先用 CUDA；如果你想更省显存，可以在外部显式传 device="cuda" 且配合更小的模型 / 量化
                 device = "cuda" if (torch and getattr(torch, 'cuda', None) and torch.cuda.is_available()) else "cpu"
             self.device = torch.device(device) if torch else device
 
-            # dtype 选择
+            # dtype 选择：默认在 GPU 上优先用 bfloat16/float16 以节省显存
             dtype = None
             if torch and torch_dtype:
                 try:
                     dtype = getattr(torch, torch_dtype)
                 except Exception:
                     dtype = None
+            elif torch and device == "cuda" and not self.load_in_4bit:
+                # 如果用户没显式指定 dtype，且未开启 4bit，则在 CUDA 上尽量用半精度
+                if getattr(torch.cuda, "is_bf16_supported", lambda: False)():
+                    dtype = torch.bfloat16
+                else:
+                    dtype = torch.float16
 
             self.tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
             load_kwargs = {"trust_remote_code": True}
-            if dtype is not None:
-                load_kwargs["torch_dtype"] = dtype
-            if device_map:
-                load_kwargs["device_map"] = device_map
+
+            # 4bit 量化加载优先，其次是半精度
+            if self.load_in_4bit:
+                load_kwargs.update({
+                    "load_in_4bit": True,
+                    "device_map": device_map or "auto",
+                })
+                # 4bit 模式下由 HF 管理设备分配，不再手动 model.to(device)
+            else:
+                if dtype is not None:
+                    load_kwargs["torch_dtype"] = dtype
+                if device_map:
+                    load_kwargs["device_map"] = device_map
 
             base = AutoModelForCausalLM.from_pretrained(base_model, **load_kwargs)
 
@@ -108,10 +138,12 @@ else:
                     print("⚠️ peft not available; cannot load LoRA. Using base model.")
                 self.model = base
 
-            try:
-                self.model.to(self.device)  # 若使用 device_map=auto 可能已分配，忽略异常
-            except Exception:
-                pass
+            if not self.load_in_4bit:
+                # 仅在非 4bit 模式下手动搬运到指定设备；4bit + device_map=auto 由 HF 管理
+                try:
+                    self.model.to(self.device)
+                except Exception:
+                    pass
             self.model.eval()
 
         def _format_prompt(self, obj: Union[Dict, str]) -> str:
@@ -121,11 +153,13 @@ else:
             return str(obj)
 
         def invoke(self, prompt: Union[Dict, str]) -> str:
+            """执行一次推理调用，尽量控制显存占用并避免无效的采样参数组合。"""
             text = self._format_prompt(prompt)
             inputs = self.tokenizer(text, return_tensors="pt")
             if torch:
                 try:
-                    inputs = inputs.to(self.device)
+                    # 在 4bit + device_map 模式下，inputs 仍然需要放到主设备或相应 CUDA
+                    inputs = inputs.to(self.device) if not self.load_in_4bit else inputs.to("cuda" if torch.cuda.is_available() else self.device)
                 except Exception:
                     pass
                 with torch.no_grad():
@@ -143,5 +177,6 @@ else:
 
         def __call__(self, prompt: Union[Dict, str]):  # 供 LangChain Runnable 检测
             return self.invoke(prompt)
+
         def __or__(self, other):  # 保持与 PromptTemplate | LLM | Parser 链式兼容
             return other

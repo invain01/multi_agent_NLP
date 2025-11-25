@@ -129,6 +129,13 @@
                                 <div class="form-text">例如：学术表达提升,逻辑结构优化,可读性增强</div>
                             </div>
 
+                            <!-- 协作轮次数量（从高级设置中挪到主区域，默认可见） -->
+                            <div class="mb-3">
+                                <label for="rounds" class="form-label">协作轮次：</label>
+                                <input type="number" class="form-control" id="rounds" value="3" min="1" max="10">
+                                <div class="form-text">轮次越多，优化越充分，但耗时也会增加</div>
+                            </div>
+
                             <!-- 高级设置 -->
                             <div class="accordion mb-3" id="advancedSettings">
                                 <div class="accordion-item">
@@ -147,10 +154,6 @@
                                          data-bs-parent="#advancedSettings">
                                         <div class="accordion-body">
                                             <div class="row">
-                                                <div class="col-md-4">
-                                                    <label for="rounds" class="form-label">协作轮次：</label>
-                                                    <input type="number" class="form-control" id="rounds" value="3" min="1" max="10">
-                                                </div>
                                                 <div class="col-md-4">
                                                     <label for="language" class="form-label">语言：</label>
                                                     <select class="form-select" id="language">

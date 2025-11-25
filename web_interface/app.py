@@ -63,6 +63,16 @@ try:
 except Exception:
     web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
 
+
+def _describe_agent_models(system: DualAgentAcademicSystem) -> Dict[str, str]:
+    """Return a small dict describing Agent A/B model names for logging/inspection."""
+    a = getattr(system, 'agent_a_llm', None)
+    b = getattr(system, 'agent_b_llm', None)
+    a_name = getattr(a, 'model_name', None) or getattr(a, '__class__', type('A',(object,),{})).__name__ if a else 'None'
+    b_name = getattr(b, 'model_name', None) or getattr(b, '__class__', type('B',(object,),{})).__name__ if b else 'None'
+    return {"agent_a_model": str(a_name), "agent_b_model": str(b_name)}
+
+
 # 导入评估指标模块
 try:
     from metrics import AcademicMetrics
@@ -78,6 +88,15 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 在 Web 启动时输出一次当前 Agent A/B 使用的模型信息
+_model_info = _describe_agent_models(web_dual_agent_system)
+logger.info(
+    "Web DualAgent system ready | Agent A model=%s | Agent B model=%s | hybrid_env=%s",
+    _model_info["agent_a_model"],
+    _model_info["agent_b_model"],
+    _enable_hybrid_env,
+)
 
 # 创建Flask应用
 app = Flask(__name__,
@@ -154,20 +173,41 @@ task_manager = TaskManager()
 
 
 def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
-                               rounds: int = 3, enable_tools: bool = True,
+                               rounds: int = 2, enable_tools: bool = True,
                                enable_memory: bool = True, language: str = 'zh'):
-    """运行文本优化任务"""
+    """运行文本优化任务（Agent A 使用本地学生模型，Agent B 使用远程教师模型）"""
     try:
+        logger.info(
+            "[task %s] start text_optimization | rounds=%s | enable_tools=%s | enable_memory=%s",
+            task_id[:8], rounds, enable_tools, enable_memory,
+        )
+        # 每个任务再记录一次当前 Agent A/B 模型，便于排查混合模式配置
+        info = _describe_agent_models(web_dual_agent_system)
+        logger.info(
+            "[task %s] AgentA=%s | AgentB=%s",
+            task_id[:8], info["agent_a_model"], info["agent_b_model"],
+        )
+
         task_manager.update_task(task_id, status='running', progress=10, message='初始化智能体系统...')
 
-        # 自定义的智能体系统，支持实时更新
+        # 这里不再新建基于 llm 的系统，而是复用全局 web_dual_agent_system 中的学生/教师配置
         class RealTimeAgentSystem(DualAgentAcademicSystem):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
+            def __init__(self, base_system: DualAgentAcademicSystem):
+                # base_system.tools 是一个 {name: Tool} 字典，这里需要还原为 Tool 列表
+                tools_list = list(getattr(base_system, 'tools', {}).values())
+                super().__init__(
+                    base_system.agent_b_llm,  # 作为主 llm 传入（内部仍然支持 agent_a_llm/agent_b_llm）
+                    tools_list,
+                    base_system.vectorstore,
+                    enable_tools=base_system.tools_enabled,
+                    enable_memory=base_system.memory_enabled,
+                    agent_a_llm=base_system.agent_a_llm,
+                    agent_b_llm=base_system.agent_b_llm,
+                )
                 self.task_id = task_id
 
             def collaborate(self, user_text: str, user_requirements: List[str], language: str = "中文",
-                            rounds: int = 3):
+                            rounds: int = 2):
                 task_manager.update_task(self.task_id, progress=20, message=f'开始{rounds}轮协作优化...')
 
                 self.collaboration_log = [{"round": 0, "user_input": user_text, "requirements": user_requirements,
@@ -243,7 +283,7 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
 
                     previous_feedback = b_resp
                     current_text = optimized_text
-                    print(f"✅ Round {r} 完成 | 评分: {last_scores if last_scores else '{}'}")
+                    # 去掉每轮控制台 print，避免日志过多
                     time.sleep(0.15)
 
                 task_manager.update_task(self.task_id, progress=95, message='计算最终评估指标...')
@@ -264,14 +304,8 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
 
                 return current_text, self.collaboration_log
 
-        # 初始化实时智能体系统
-        system = RealTimeAgentSystem(
-            llm,
-            TOOLS,
-            vectorstore,
-            enable_tools=enable_tools,
-            enable_memory=enable_memory,
-        )
+        # 初始化实时智能体系统：复用已经构建好的 hybrid/单模型配置
+        system = RealTimeAgentSystem(web_dual_agent_system)
 
         task_manager.update_task(task_id, progress=15, message='系统初始化完成，开始优化...')
 

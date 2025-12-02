@@ -215,6 +215,7 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
                 current_text = user_text
                 previous_feedback = ""
                 last_scores = {}
+                last_advanced_metrics = {}
 
                 if self.memory_enabled:
                     self.memory.add_memory(user_text, {"type": "user_input"})
@@ -239,10 +240,24 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
                         "previous_feedback": previous_feedback,
                         "memory_snippets": '\n'.join(mem_snippets) if mem_snippets else "(无)",
                         "tool_observations": tool_obs,
-                        "last_scores": last_scores if last_scores else "(无)"
+                        "last_scores": last_scores if last_scores else "(无)",
+                        "last_advanced_metrics": last_advanced_metrics if last_advanced_metrics else "(无)",
                     }
                     a_resp = self.agent_a_chain.invoke(a_input)
                     optimized_text = self._extract_section(a_resp, "**优化版本：**", "**修改说明：**") or current_text
+
+                    # 使用学术指标模块对本轮优化后的文本进行评估，便于前端可视化每一轮的指标对比
+                    round_advanced_metrics = {}
+                    if HAS_METRICS and AcademicMetrics is not None:
+                        try:
+                            metrics_result = AcademicMetrics.overall_quality_score(optimized_text)
+                            if metrics_result and 'scores' in metrics_result:
+                                round_advanced_metrics = dict(metrics_result['scores'])
+                                # 额外增加整体质量得分，方便前端绘制总分曲线
+                                round_advanced_metrics['overall_quality'] = metrics_result.get('overall_score', 0.0)
+                        except Exception as _e:  # noqa: F841
+                            # 指标计算失败时，不阻断主流程，仅在日志中给出提示
+                            logger.warning("Failed to calculate round %s academic metrics", r)
 
                     # Agent B 评审
                     task_manager.update_task(self.task_id, message=f'第{r}轮 - Agent B 正在评审...')
@@ -268,10 +283,13 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
                         "scores": last_scores,
                         "tool_observations": tool_obs,
                         "diff": diff_str,
+                        # 每一轮的学术评估指标，用于前端可视化
+                        "advanced_metrics": round_advanced_metrics,
                         "timestamp": datetime.now().isoformat()
                     }
 
                     self.collaboration_log.append(round_log)
+                    last_advanced_metrics = round_advanced_metrics
 
                     # 发送轮次完成更新
                     task_manager.update_task(
@@ -288,19 +306,25 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
 
                 task_manager.update_task(self.task_id, progress=95, message='计算最终评估指标...')
 
-                # 计算advanced_metrics
-                advanced_metrics = {}
+                # 计算最终一轮的 advanced_metrics，并与已有轮次指标合并，保证总体质量曲线完整
+                final_advanced_metrics = {}
                 if HAS_METRICS:
                     try:
                         result_metrics = AcademicMetrics.overall_quality_score(current_text)
                         if result_metrics and 'scores' in result_metrics:
-                            advanced_metrics = result_metrics['scores']
+                            final_advanced_metrics = dict(result_metrics['scores'])
+                            # 补充总体质量分，供前端绘制 overall_quality 折线
+                            final_advanced_metrics['overall_quality'] = result_metrics.get('overall_score', 0.0)
                     except Exception as e:
                         print(f"Warning: Failed to calculate advanced metrics: {e}")
 
-                # 将advanced_metrics添加到最后一条日志中
+                # 将 advanced_metrics 合并到最后一条日志中，避免覆盖前面按轮次记录的指标
                 if self.collaboration_log:
-                    self.collaboration_log[-1]['advanced_metrics'] = advanced_metrics
+                    last_log = self.collaboration_log[-1]
+                    merged = dict(last_log.get('advanced_metrics') or {})
+                    merged.update(final_advanced_metrics)
+                    last_log['advanced_metrics'] = merged
+                    self.collaboration_log[-1] = last_log
 
                 return current_text, self.collaboration_log
 

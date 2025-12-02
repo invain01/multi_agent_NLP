@@ -7,6 +7,8 @@ class MultiAgentApp {
         this.socket = null;
         this.currentTaskId = null;
         this.currentTab = 'text-optimization';
+        this.roundMetrics = [];
+        this.roundChart = null;
         
         this.init();
     }
@@ -590,6 +592,9 @@ class MultiAgentApp {
         if (document.getElementById('resultsArea').style.display !== 'none') {
             this.appendRoundDetail(roundData);
         }
+
+        // 更新每一轮的评价指标折线图
+        this.updateRoundMetrics(roundData);
     }
 
     handleTaskUpdate(taskData) {
@@ -684,6 +689,17 @@ class MultiAgentApp {
     displayResults(result) {
         if (!result) return;
 
+        // 重置轮次指标缓存和图表
+        this.roundMetrics = [];
+        if (this.roundChart) {
+            this.roundChart.destroy();
+            this.roundChart = null;
+        }
+        const roundMetricsDisplay = document.getElementById('roundMetricsDisplay');
+        if (roundMetricsDisplay) {
+            roundMetricsDisplay.style.display = 'none';
+        }
+
         // 显示结果区域
         document.getElementById('resultsArea').style.display = 'block';
 
@@ -699,6 +715,9 @@ class MultiAgentApp {
 
         // 显示轮次详情
         this.displayRoundDetails(result);
+
+        // 基于完整日志构建每轮评价指标曲线
+        this.buildRoundMetricsFromLog(result);
 
         // 滚动到结果区域
         document.getElementById('resultsArea').scrollIntoView({ behavior: 'smooth' });
@@ -890,6 +909,156 @@ class MultiAgentApp {
             `;
             roundsContainer.appendChild(roundDiv);
         });
+    }
+
+    buildRoundMetricsFromLog(result) {
+        this.roundMetrics = [];
+        const log = result.log || [];
+
+        log.forEach((round, index) => {
+            if (index === 0) return; // 跳过初始轮次
+            const metrics = round.advanced_metrics || {};
+            if (!metrics || Object.keys(metrics).length === 0) return;
+            this.roundMetrics.push({
+                round: round.round,
+                metrics: metrics
+            });
+        });
+
+        this.renderRoundMetricsChart();
+    }
+
+    updateRoundMetrics(roundData) {
+        const metrics = roundData.advanced_metrics || {};
+        if (!metrics || Object.keys(metrics).length === 0) {
+            return;
+        }
+
+        if (!this.roundMetrics) {
+            this.roundMetrics = [];
+        }
+
+        const index = typeof roundData.round === 'number' ? roundData.round - 1 : this.roundMetrics.length;
+        this.roundMetrics[index] = {
+            round: roundData.round,
+            metrics: metrics
+        };
+
+        this.renderRoundMetricsChart();
+    }
+
+    renderRoundMetricsChart() {
+        const container = document.getElementById('roundMetricsDisplay');
+        const canvas = document.getElementById('roundMetricsChart');
+
+        if (!canvas || typeof Chart === 'undefined') {
+            return;
+        }
+
+        const validRounds = (this.roundMetrics || [])
+            .filter(Boolean)
+            .sort((a, b) => (a.round || 0) - (b.round || 0));
+
+        if (validRounds.length === 0) {
+            if (container) {
+                container.style.display = 'none';
+            }
+            return;
+        }
+
+        const labels = validRounds.map(r => `第${r.round}轮`);
+
+        const metricLabelMap = {
+            overall_quality: '总体质量',
+            academic_formality: '学术规范性',
+            citation_completeness: '引用完整性',
+            novelty: '创新度',
+            language_fluency: '语言流畅度',
+            sentence_balance: '句子平衡',
+            argumentation: '论证强度'
+        };
+
+        const palette = [
+            '#0d6efd', // 蓝
+            '#198754', // 绿
+            '#ffc107', // 黄
+            '#dc3545', // 红
+            '#6f42c1', // 紫
+            '#20c997', // 青
+            '#fd7e14'  // 橙
+        ];
+
+        const firstMetrics = validRounds[0].metrics || {};
+        const candidateKeys = [
+            'overall_quality',
+            'academic_formality',
+            'citation_completeness',
+            'novelty',
+            'language_fluency'
+        ];
+        let metricKeys = candidateKeys.filter(k => Object.prototype.hasOwnProperty.call(firstMetrics, k));
+
+        if (metricKeys.length === 0) {
+            metricKeys = Object.keys(firstMetrics).filter(k => typeof firstMetrics[k] === 'number').slice(0, 4);
+        }
+
+        const datasets = metricKeys.map((key, idx) => {
+            return {
+                label: metricLabelMap[key] || key,
+                data: validRounds.map(r => {
+                    const m = r.metrics || {};
+                    const v = m[key];
+                    return typeof v === 'number' ? v : null;
+                }),
+                borderColor: palette[idx % palette.length],
+                backgroundColor: palette[idx % palette.length] + '33',
+                tension: 0.25,
+                spanGaps: true
+            };
+        });
+
+        if (this.roundChart) {
+            this.roundChart.destroy();
+        }
+
+        const ctx = canvas.getContext('2d');
+        this.roundChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const label = context.dataset.label || '';
+                                const value = typeof context.parsed.y === 'number' ? context.parsed.y.toFixed(3) : 'N/A';
+                                return `${label}: ${value}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 0,
+                        max: 1,
+                        ticks: {
+                            stepSize: 0.1
+                        }
+                    }
+                }
+            }
+        });
+
+        if (container) {
+            container.style.display = 'block';
+        }
     }
 
     displayEvaluationResults(result) {

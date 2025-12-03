@@ -47,21 +47,34 @@ from multi_agent_nlp_project import (
     parse_requirements,
     generate_html_report,
     build_hybrid_dual_agent_system,
+    get_dual_agent_system,  # 新增：使用延迟加载函数
 )
 
-# 根据环境变量自动决定是否启用混合模式 (学生模型 + 教师模型)
-_enable_hybrid_env = (
-    os.getenv('ENABLE_HYBRID') == '1' or
-    bool(os.getenv('STUDENT_BASE_MODEL')) or
-    os.getenv('FORCE_STUDENT_STUB') == '1'
-)
-try:
-    if _enable_hybrid_env:
-        web_dual_agent_system = build_hybrid_dual_agent_system()
-    else:
-        web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
-except Exception:
-    web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
+# 使用延迟加载机制，避免在应用启动时立即加载大型模型
+# 这样可以大幅减少启动时的内存占用
+_web_dual_agent_system = None
+
+def get_web_dual_agent_system():
+    """获取 Web 双 Agent 系统实例（延迟加载 + 单例模式）"""
+    global _web_dual_agent_system
+    if _web_dual_agent_system is None:
+        print("⏳ Web应用首次请求，正在加载双 Agent 系统...")
+        # 根据环境变量自动决定是否启用混合模式
+        _enable_hybrid_env = (
+            os.getenv('ENABLE_HYBRID') == '1' or
+            bool(os.getenv('STUDENT_BASE_MODEL')) or
+            os.getenv('FORCE_STUDENT_STUB') == '1'
+        )
+        try:
+            if _enable_hybrid_env:
+                _web_dual_agent_system = build_hybrid_dual_agent_system()
+            else:
+                _web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
+        except Exception as e:
+            print(f"⚠️ 模型加载失败: {e}，使用默认配置")
+            _web_dual_agent_system = DualAgentAcademicSystem(llm, TOOLS, vectorstore)
+        print("✅ Web 双 Agent 系统加载完成")
+    return _web_dual_agent_system
 
 
 def _describe_agent_models(system: DualAgentAcademicSystem) -> Dict[str, str]:
@@ -89,14 +102,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 在 Web 启动时输出一次当前 Agent A/B 使用的模型信息
-_model_info = _describe_agent_models(web_dual_agent_system)
-logger.info(
-    "Web DualAgent system ready | Agent A model=%s | Agent B model=%s | hybrid_env=%s",
-    _model_info["agent_a_model"],
-    _model_info["agent_b_model"],
-    _enable_hybrid_env,
-)
+# 模型信息将在首次请求时输出，避免启动时加载
+logger.info("🚀 Web 应用已启动（模型将在首次请求时加载）")
 
 # 创建Flask应用
 app = Flask(__name__,
@@ -182,7 +189,7 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
             task_id[:8], rounds, enable_tools, enable_memory,
         )
         # 每个任务再记录一次当前 Agent A/B 模型，便于排查混合模式配置
-        info = _describe_agent_models(web_dual_agent_system)
+        info = _describe_agent_models(get_web_dual_agent_system())
         logger.info(
             "[task %s] AgentA=%s | AgentB=%s",
             task_id[:8], info["agent_a_model"], info["agent_b_model"],
@@ -329,7 +336,7 @@ def run_text_optimization_task(task_id: str, text: str, requirements: List[str],
                 return current_text, self.collaboration_log
 
         # 初始化实时智能体系统：复用已经构建好的 hybrid/单模型配置
-        system = RealTimeAgentSystem(web_dual_agent_system)
+        system = RealTimeAgentSystem(get_web_dual_agent_system())
 
         task_manager.update_task(task_id, progress=15, message='系统初始化完成，开始优化...')
 
@@ -381,7 +388,7 @@ def run_file_optimization_task(task_id: str, file_content: str, requirements: Li
 
         try:
             # 使用与文本优化相同的全局/混合系统配置，保持前后端一致
-            system = web_dual_agent_system
+            system = get_web_dual_agent_system()
             task_manager.update_task(task_id, progress=20)
 
             # 执行文件优化

@@ -71,7 +71,7 @@ else:
             device: Optional[str] = None,
             torch_dtype: Optional[str] = None,
             device_map: Optional[str] = None,
-            load_in_4bit: bool = False,
+            load_in_4bit: bool = None,
         ) -> None:
             self.base_model = base_model
             self.lora_dir = lora_dir or ""
@@ -79,14 +79,22 @@ else:
             self.max_new_tokens = min(max_new_tokens, 512)
             self.model_name = base_model
 
-            # 是否启用 4bit 量化（仅在 GPU + bitsandbytes 可用时生效）
+            # 是否启用 4bit 量化（默认启用以节省内存）
+            if load_in_4bit is None:
+                # 默认值从环境变量读取，优先启用4bit量化
+                load_in_4bit = os.getenv("STUDENT_LOAD_IN_4BIT", "1") == "1"
             self.load_in_4bit = bool(load_in_4bit and _BNB_AVAILABLE and torch and torch.cuda.is_available())
             if load_in_4bit and not self.load_in_4bit:
                 print("⚠️ Requested load_in_4bit=True but bitsandbytes / CUDA 不可用，回退到半精度模式。")
 
             if device is None:
-                # 默认优先用 CUDA；如果你想更省显存，可以在外部显式传 device="cuda" 且配合更小的模型 / 量化
-                device = "cuda" if (torch and getattr(torch, 'cuda', None) and torch.cuda.is_available()) else "cpu"
+                # 支持通过环境变量强制使用CPU模式以节省显存
+                force_cpu = os.getenv("STUDENT_FORCE_CPU", "0") == "1"
+                if force_cpu:
+                    device = "cpu"
+                    print("ℹ️ STUDENT_FORCE_CPU=1: 使用CPU模式运行学生模型（内存优化）")
+                else:
+                    device = "cuda" if (torch and getattr(torch, 'cuda', None) and torch.cuda.is_available()) else "cpu"
             self.device = torch.device(device) if torch else device
 
             # dtype 选择：默认在 GPU 上优先用 bfloat16/float16 以节省显存
@@ -114,11 +122,14 @@ else:
                 load_kwargs.update({
                     "load_in_4bit": True,
                     "device_map": device_map or "auto",
+                    "max_memory": {0: "3GB", "cpu": "8GB"},  # 限制GPU和CPU内存使用
                 })
+                print(f"✅ 启用4bit量化加载，预计内存占用: ~1-2GB")
                 # 4bit 模式下由 HF 管理设备分配，不再手动 model.to(device)
             else:
                 if dtype is not None:
                     load_kwargs["torch_dtype"] = dtype
+                # 非4bit模式下，仅在明确指定时使用device_map，避免不必要的内存映射
                 if device_map:
                     load_kwargs["device_map"] = device_map
 

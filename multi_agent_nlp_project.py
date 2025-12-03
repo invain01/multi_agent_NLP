@@ -767,9 +767,11 @@ def build_hybrid_dual_agent_system(base_model: str | None = None,
                                    max_new_tokens: int | None = None,
                                    device: str | None = None,
                                    torch_dtype: str | None = None,
-                                   device_map: str | None = None) -> DualAgentAcademicSystem:
+                                   device_map: str | None = None,
+                                   load_in_4bit: bool | None = None) -> DualAgentAcademicSystem:
     """Create a DualAgentAcademicSystem with local HF student model for Agent A and remote LLM for Agent B.
     Added detection of FORCE_STUDENT_STUB=1 测试/CI模式.
+    支持延迟加载和单例模式以节省内存.
     """
     if _HFStudentLLM is None:
         print("⚠️ HF student LLM not available (transformers/peft missing or import error); using single LLM mode.")
@@ -798,7 +800,8 @@ def build_hybrid_dual_agent_system(base_model: str | None = None,
                                     max_new_tokens=max_new,
                                     device=device,
                                     torch_dtype=torch_dtype,
-                                    device_map=device_map)
+                                    device_map=device_map,
+                                    load_in_4bit=load_in_4bit)
         print(f"🤖 Hybrid mode engaged | Agent A: {getattr(student_llm,'model_name', base_model)} (LoRA={'ON' if lora_dir else 'OFF'} stub={stub_mode}) | Agent B: {getattr(llm, 'model_name', 'remote-llm')}")
         return DualAgentAcademicSystem(llm, TOOLS, vectorstore, agent_a_llm=student_llm, agent_b_llm=llm)
     except Exception as e:
@@ -806,11 +809,34 @@ def build_hybrid_dual_agent_system(base_model: str | None = None,
         return DualAgentAcademicSystem(llm, TOOLS, vectorstore)
 
 
-# keep default global system for backward compatibility
-dual_agent_system = build_hybrid_dual_agent_system()
-print("🧠 双Agent系统初始化完成 (Agent A 本地学生模型, Agent B 远程教师模型, 若学生未配置则回退单模型模式)")
-if os.getenv("FORCE_STUDENT_STUB") == "1":
-    print("🧪 当前运行于学生模型 STUB 模式：所有学生输出为占位生成，仅用于快速测试。")
+# 全局单例变量，支持延迟加载
+_dual_agent_system_instance = None
+
+def get_dual_agent_system(force_reload: bool = False) -> DualAgentAcademicSystem:
+    """获取双 Agent 系统实例（单例模式 + 延迟加载）
+    
+    在Web应用中，这避免了在模块导入时就加载大型模型，节省内存。
+    """
+    global _dual_agent_system_instance
+    if _dual_agent_system_instance is None or force_reload:
+        print("⏳ 延迟加载双 Agent 系统...")
+        _dual_agent_system_instance = build_hybrid_dual_agent_system()
+        print("✅ 双 Agent 系统加载完成")
+        if os.getenv("FORCE_STUDENT_STUB") == "1":
+            print("🧪 当前运行于学生模型 STUB 模式：所有学生输出为占位生成，仅用于快速测试。")
+    return _dual_agent_system_instance
+
+# 保留向后兼容的接口，但不立即加载模型
+# 用户可以直接调用 dual_agent_system，但实际上会延迟加载
+class _LazyDualAgentSystemProxy:
+    """Proxy 对象，延迟加载真实的 DualAgentAcademicSystem"""
+    def __getattr__(self, name):
+        # 当访问任何属性或方法时，才真正加载模型
+        real_system = get_dual_agent_system()
+        return getattr(real_system, name)
+
+dual_agent_system = _LazyDualAgentSystemProxy()
+print("🧠 双 Agent 系统代理已初始化（延迟加载模式，首次使用时才加载模型）")
 
 # 修复：补全字符串引号
 ENABLE_INTERACTIVE = os.getenv("ENABLE_INTERACTIVE", "0") == "1"

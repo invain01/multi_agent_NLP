@@ -10,11 +10,13 @@ except Exception:
     _TORCH_AVAILABLE = False
 
 try:
-    from transformers import AutoTokenizer, AutoModelForCausalLM  # type: ignore
+    # 1. 【修改点】在这里增加了 BitsAndBytesConfig 的导入
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig  # type: ignore
     _TRANSFORMERS_AVAILABLE = True
 except Exception:
     AutoTokenizer = None  # type: ignore
     AutoModelForCausalLM = None  # type: ignore
+    BitsAndBytesConfig = None # type: ignore
     _TRANSFORMERS_AVAILABLE = False
 
 try:
@@ -104,8 +106,8 @@ else:
                     dtype = getattr(torch, torch_dtype)
                 except Exception:
                     dtype = None
-            elif torch and device == "cuda" and not self.load_in_4bit:
-                # 如果用户没显式指定 dtype，且未开启 4bit，则在 CUDA 上尽量用半精度
+            elif torch and device == "cuda": # 稍微调整了逻辑，让 dtype 也能用于 4bit config
+                # 如果用户没显式指定 dtype，则在 CUDA 上尽量用半精度
                 if getattr(torch.cuda, "is_bf16_supported", lambda: False)():
                     dtype = torch.bfloat16
                 else:
@@ -117,14 +119,22 @@ else:
 
             load_kwargs = {"trust_remote_code": True}
 
-            # 4bit 量化加载优先，其次是半精度
+            # 2. 【修改点】核心逻辑修改：使用 BitsAndBytesConfig 替代 load_in_4bit=True
             if self.load_in_4bit:
+                # 创建配置对象
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=dtype if dtype else torch.float16
+                )
+                
                 load_kwargs.update({
-                    "load_in_4bit": True,
+                    "quantization_config": bnb_config, # 替换掉了原来的 "load_in_4bit": True
                     "device_map": device_map or "auto",
                     "max_memory": {0: "3GB", "cpu": "8GB"},  # 限制GPU和CPU内存使用
                 })
-                print(f"✅ 启用4bit量化加载，预计内存占用: ~1-2GB")
+                print(f"✅ 启用4bit量化加载 (BitsAndBytesConfig)，预计内存占用: ~1-2GB")
                 # 4bit 模式下由 HF 管理设备分配，不再手动 model.to(device)
             else:
                 if dtype is not None:

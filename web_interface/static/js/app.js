@@ -784,44 +784,108 @@ class MultiAgentApp {
 
         let metricsCount = 0;
 
-        Object.entries(advancedMetrics).forEach(([key, value]) => {
-            if (typeof value === 'number') {
-                // 确保不显示平均值或其他聚合字段
-                if (key.includes('_avg') || key === 'overall_quality') {
-                    return;
+        // 尝试从首轮日志中获取初始分，用于当后端未提供改进值时计算差值
+        let initialMetrics = {};
+        if (result.log && result.log.length > 0) {
+            const firstRound = result.log[0].advanced_metrics || {};
+            initialMetrics = firstRound;
+        }
+
+        // 定义我们关心的九个学术指标顺序（显示顺序固定）
+        const metricKeys = [
+            'academic_formality',
+            'citation_completeness',
+            'novelty',
+            'language_fluency',
+            'sentence_balance',
+            'argumentation',
+            'expression_diversity',
+            'structure_completeness',
+            'tense_consistency'
+        ];
+
+        metricKeys.forEach((metricKey) => {
+            // 忽略整体质量等聚合字段
+            if (metricKey === 'overall_quality') return;
+
+            // 兼容后端可能使用的字段名变体
+            const finalCandidates = [metricKey, `${metricKey}_score`, `${metricKey}_value`];
+            const improvementCandidates = [
+                `${metricKey}_improvement`,
+                `${metricKey}_delta`,
+                `${metricKey}_gain`,
+                `${metricKey}_diff`
+            ];
+
+            let finalVal = null;
+            for (const c of finalCandidates) {
+                if (Object.prototype.hasOwnProperty.call(advancedMetrics, c) && typeof advancedMetrics[c] === 'number') {
+                    finalVal = advancedMetrics[c];
+                    break;
                 }
-                
-                let metricKey = key.replace('_score', '').replace('_improvement', '');
-                let label = metricLabels[key] || metricLabels[metricKey] || key;
-                
-                // 确定样式
-                let improvementClass = 'neutral';
-                let symbol = '→';
-                let displayValue = value.toFixed(3);
-                
-                if (value > 0.02) {
+            }
+
+            // 获取显式的改进字段（如果存在）
+            let improvementVal = null;
+            for (const c of improvementCandidates) {
+                if (Object.prototype.hasOwnProperty.call(advancedMetrics, c) && typeof advancedMetrics[c] === 'number') {
+                    improvementVal = advancedMetrics[c];
+                    break;
+                }
+            }
+
+            // 如果后端没有提供 improvement，而我们有首轮初始值，则用 final - initial
+            if (improvementVal === null && finalVal !== null) {
+                for (const c of finalCandidates) {
+                    // 尝试从初始轮找对应字段
+                    if (Object.prototype.hasOwnProperty.call(initialMetrics, c) && typeof initialMetrics[c] === 'number') {
+                        improvementVal = finalVal - initialMetrics[c];
+                        break;
+                    }
+                }
+            }
+
+            // 如果既没有 final 也没有 improvement，则跳过
+            if (finalVal === null && improvementVal === null) return;
+
+            const label = metricLabels[`${metricKey}_score`] || metricLabels[metricKey] || metricKey;
+
+            const displayFinal = (typeof finalVal === 'number') ? finalVal.toFixed(3) : 'N/A';
+
+            // 计算用于显示改进的样式与符号
+            let improvementClass = 'neutral';
+            let symbol = '→';
+            let displayImprovement = improvementVal !== null ? improvementVal : 0;
+
+            if (typeof displayImprovement === 'number') {
+                if (displayImprovement > 0.02) {
                     improvementClass = 'positive';
                     symbol = '↑';
-                } else if (value < -0.02) {
+                } else if (displayImprovement < -0.02) {
                     improvementClass = 'negative';
                     symbol = '↓';
                 }
-                
-                const metricCard = document.createElement('div');
-                metricCard.className = 'metric-card';
-                metricCard.innerHTML = `
-                    <div class="metric-name">${label}</div>
-                    <div class="metric-value">${displayValue}</div>
-                    <div class="metric-improvement ${improvementClass}">
-                        ${symbol} ${Math.abs(value).toFixed(4)}
-                    </div>
-                    <div class="metric-bar">
-                        <div class="metric-bar-fill" style="width: ${Math.max(0, Math.min(100, (value + 1) * 50))}%"></div>
-                    </div>
-                `;
-                advancedContainer.appendChild(metricCard);
-                metricsCount++;
             }
+
+            // 进度条基于最终分数（若无final则用改进的相对映射）
+            let barPercent = 0;
+            if (typeof finalVal === 'number') {
+                barPercent = Math.max(0, Math.min(100, finalVal * 100));
+            } else if (typeof displayImprovement === 'number') {
+                barPercent = Math.max(0, Math.min(100, (displayImprovement + 1) * 50));
+            }
+
+            const metricCard = document.createElement('div');
+            metricCard.className = 'metric-card';
+            metricCard.innerHTML = `
+                <div class="metric-name">${label}</div>
+                <div class="metric-value">${displayFinal}</div>
+                <div class="metric-bar">
+                    <div class="metric-bar-fill" style="width: ${barPercent}%"></div>
+                </div>
+            `;
+            advancedContainer.appendChild(metricCard);
+            metricsCount++;
         });
 
         if (metricsCount === 0) {

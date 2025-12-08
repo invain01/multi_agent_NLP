@@ -78,7 +78,7 @@ else:
             self.base_model = base_model
             self.lora_dir = lora_dir or ""
             # 为了控制显存占用，限制单次生成长度
-            self.max_new_tokens = min(max_new_tokens, 512)
+            self.max_new_tokens = min(max_new_tokens, 1024)
             self.model_name = base_model
 
             # 是否启用 4bit 量化（默认启用以节省内存）

@@ -134,6 +134,42 @@
                                 <div class="form-text">轮次越多，优化越充分，但耗时也会增加</div>
                             </div>
 
+                            <!-- 高级设置 -->
+                            <div class="mb-3">
+                                <div class="accordion" id="advancedSettings">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAdvanced">
+                                                <i class="bi bi-gear"></i>&nbsp;高级设置
+                                            </button>
+                                        </h2>
+                                        <div id="collapseAdvanced" class="accordion-collapse collapse" data-bs-parent="#advancedSettings">
+                                            <div class="accordion-body">
+                                                <div class="mb-3">
+                                                    <label for="language" class="form-label">优化语言：</label>
+                                                    <select class="form-select" id="language">
+                                                        <option value="zh" selected>中文</option>
+                                                        <option value="en">英文</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="checkbox" id="enableTools" checked>
+                                                    <label class="form-check-label" for="enableTools">
+                                                        启用工具调用（网络搜索等）
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="enableMemory" checked>
+                                                    <label class="form-check-label" for="enableMemory">
+                                                        启用记忆功能（上下文保持）
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- 操作按钮 -->
                             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                                 <button class="btn btn-success me-md-2" id="startOptimization">

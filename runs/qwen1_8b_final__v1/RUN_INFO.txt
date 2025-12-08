@@ -1,0 +1,10 @@
+Model: D:/qwen1.8
+LoRA r=8, alpha=16, dropout=0.05
+Target modules=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj']
+QLoRA=True
+Rows=662
+Epochs=2
+Batch=1
+GradAccum=8
+MaxLen=512
+Seed=42
